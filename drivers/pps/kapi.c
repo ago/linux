@@ -26,6 +26,7 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/time.h>
+#include <linux/timex.h>
 #include <linux/spinlock.h>
 #include <linux/fs.h>
 #include <linux/pps_kernel.h>
@@ -37,6 +38,12 @@
 
 /* PPS event workqueue */
 struct workqueue_struct *pps_event_workqueue;
+
+/* state variables to bind kernel consumer */
+/* PPS API (RFC 2783): current source and mode for ``kernel consumer'' */
+DEFINE_SPINLOCK(pps_kc_hardpps_lock);
+void	*pps_kc_hardpps_dev;	/* some unique pointer to device */
+int	pps_kc_hardpps_mode;	/* mode bits for kernel consumer */
 
 /*
  * Local functions
@@ -141,6 +148,16 @@ EXPORT_SYMBOL(pps_register_source);
 
 void pps_unregister_source(struct pps_device *pps)
 {
+	spin_lock(&pps_kc_hardpps_lock);
+	if (pps == pps_kc_hardpps_dev) {
+		pps_kc_hardpps_mode = 0;
+		pps_kc_hardpps_dev = NULL;
+		spin_unlock(&pps_kc_hardpps_lock);
+		dev_info(pps->dev, "unbound kernel consumer"
+				" on device removal\n");
+	} else
+		spin_unlock(&pps_kc_hardpps_lock);
+
 	pps_unregister_cdev(pps);
 
 	/* don't have to kfree(pps) here because it will be done on
@@ -212,6 +229,12 @@ void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 
 		captured = ~0;
 	}
+
+	/* Pass some events to kernel consumer if activated */
+	spin_lock(&pps_kc_hardpps_lock);
+	if (pps == pps_kc_hardpps_dev && event & pps_kc_hardpps_mode)
+		hardpps(&ts->ts_real, &ts->ts_raw);
+	spin_unlock(&pps_kc_hardpps_lock);
 
 	/* Wake up if captured something */
 	if (captured) {
