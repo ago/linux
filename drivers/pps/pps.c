@@ -197,9 +197,69 @@ static long pps_cdev_ioctl(struct file *file,
 
 		break;
 	}
+	case PPS_KC_BIND: {
+		struct pps_bind_args bind_args;
+
+		dev_dbg(pps->dev, "PPS_KC_BIND\n");
+
+		/* Check the capabilities */
+		if (!capable(CAP_SYS_TIME))
+			return -EPERM;
+
+		if (copy_from_user(&bind_args, uarg,
+					sizeof(struct pps_bind_args)))
+			return -EFAULT;
+
+		/* Check for supported capabilities */
+		if ((bind_args.edge & ~pps->info.mode) != 0) {
+			dev_err(pps->dev, "unsupported capabilities (%x)\n",
+					bind_args.edge);
+			return -EINVAL;
+		}
+
+		/* Validate parameters roughly */
+		if (bind_args.tsformat != PPS_TSFMT_TSPEC ||
+				(bind_args.edge & ~PPS_CAPTUREBOTH) != 0 ||
+				bind_args.consumer != PPS_KC_HARDPPS) {
+			dev_err(pps->dev, "invalid kernel consumer bind"
+					" parameters (%x)\n", bind_args.edge);
+			return -EINVAL;
+		}
+
+		/* Check if another consumer is already bound */
+		spin_lock(&pps_kc_hardpps_lock);
+
+		if (bind_args.edge == 0)
+			if (pps_kc_hardpps_dev == pps) {
+				pps_kc_hardpps_mode = 0;
+				pps_kc_hardpps_dev = NULL;
+				spin_unlock(&pps_kc_hardpps_lock);
+				dev_info(pps->dev, "unbound kernel"
+						" consumer\n");
+			} else {
+				spin_unlock(&pps_kc_hardpps_lock);
+				dev_err(pps->dev, "selected kernel consumer"
+						" is not bound\n");
+				return -EINVAL;
+			}
+		else
+			if (pps_kc_hardpps_dev == NULL ||
+					pps_kc_hardpps_dev == pps) {
+				pps_kc_hardpps_mode = bind_args.edge;
+				pps_kc_hardpps_dev = pps;
+				spin_unlock(&pps_kc_hardpps_lock);
+				dev_info(pps->dev, "bound kernel consumer: "
+					"edge=0x%x\n", bind_args.edge);
+			} else {
+				spin_unlock(&pps_kc_hardpps_lock);
+				dev_err(pps->dev, "another kernel consumer"
+						" is already bound\n");
+				return -EINVAL;
+			}
+		break;
+	}
 	default:
 		return -ENOTTY;
-		break;
 	}
 
 	return 0;

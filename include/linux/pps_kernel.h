@@ -87,6 +87,12 @@ struct pps_device {
 
 extern struct device_attribute pps_attrs[];
 
+/* state variables to bind kernel consumer */
+/* PPS API (RFC 2783): current source and mode for ``kernel consumer'' */
+extern spinlock_t pps_kc_hardpps_lock;
+extern void *pps_kc_hardpps_dev;	/* some unique pointer to device */
+extern int pps_kc_hardpps_mode;		/* mode bits for kernel consumer */
+
 extern struct workqueue_struct *pps_event_workqueue;
 
 /*
