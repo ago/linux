@@ -25,6 +25,7 @@
 #include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/time.h>
+#include <linux/timex.h>
 #include <linux/spinlock.h>
 #include <linux/idr.h>
 #include <linux/fs.h>
@@ -36,6 +37,12 @@
 
 DEFINE_SPINLOCK(pps_idr_lock);
 DEFINE_IDR(pps_idr);
+
+/* state variables to bind kernel consumer */
+/* PPS API (RFC 2783): current source and mode for ``kernel consumer'' */
+DEFINE_SPINLOCK(pps_kc_hardpps_lock);
+void	*pps_kc_hardpps_dev;	/* some unique pointer to device */
+int	pps_kc_hardpps_mode;	/* mode bits for kernel consumer */
 
 /*
  * Local functions
@@ -248,6 +255,15 @@ void pps_unregister_source(int source)
 	}
 	spin_unlock_irq(&pps_idr_lock);
 
+	spin_lock_irq(&pps_kc_hardpps_lock);
+	if (pps == pps_kc_hardpps_dev) {
+		pps_kc_hardpps_mode = 0;
+		pps_kc_hardpps_dev = NULL;
+		spin_unlock_irq(&pps_kc_hardpps_lock);
+		pr_info("unbound kernel consumer on device removal\n");
+	} else
+		spin_unlock_irq(&pps_kc_hardpps_lock);
+
 	pps_unregister_cdev(pps);
 	pps_put_source(pps);
 }
@@ -325,6 +341,16 @@ void pps_event(int source, struct pps_event_time *ts, int event, void *data)
 
 		captured = ~0;
 	}
+	spin_lock(&pps_kc_hardpps_lock);
+	if (pps == pps_kc_hardpps_dev && event & pps_kc_hardpps_mode) {
+		struct timespec p_ts = {
+			.tv_sec = ts->ts_real.sec,
+			.tv_nsec = ts->ts_real.nsec
+		};
+
+		hardpps(&p_ts, &ts->ts_raw);
+	}
+	spin_unlock(&pps_kc_hardpps_lock);
 
 	/* Wake up iif captured somthing */
 	if (captured) {
