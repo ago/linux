@@ -62,6 +62,8 @@ static long pps_cdev_ioctl(struct file *file,
 	struct pps_device *pps = file->private_data;
 	struct pps_kparams params;
 	struct pps_fdata fdata;
+	struct pps_bind_args bind_args;
+	unsigned long irq_flags;
 	unsigned long ticks;
 	void __user *uarg = (void __user *) arg;
 	int __user *iuarg = (int __user *) arg;
@@ -186,9 +188,72 @@ static long pps_cdev_ioctl(struct file *file,
 
 		break;
 
+	case PPS_KC_BIND:
+		pr_info("PPS_KC_BIND: source %d\n", pps->id);
+
+		/* Check the capabilities */
+		if (!capable(CAP_SYS_TIME))
+			return -EPERM;
+
+		if (copy_from_user(&bind_args, uarg,
+					sizeof(struct pps_bind_args)))
+			return -EFAULT;
+
+		/* Check for supported capabilities */
+		if ((bind_args.edge & ~pps->info.mode) != 0) {
+			pr_err("PPS_KC_BIND: "
+					"unsupported capabilities (%x)\n",
+					bind_args.edge);
+			return -EINVAL;
+		}
+
+		/* Validate parameters roughly */
+		if (bind_args.tsformat != PPS_TSFMT_TSPEC ||
+				(bind_args.edge & ~PPS_CAPTUREBOTH) != 0 ||
+				bind_args.consumer != PPS_KC_HARDPPS) {
+			pr_err("PPS_KC_BIND: "
+					"invalid kcbind parameters (%x)\n",
+					bind_args.edge);
+			return -EINVAL;
+		}
+
+		/* Check if another consumer is already bound */
+		spin_lock_irqsave(&pps_kc_hardpps_lock, irq_flags);
+
+		if (bind_args.edge == 0)
+			if (pps_kc_hardpps_dev == pps) {
+				pps_kc_hardpps_mode = 0;
+				pps_kc_hardpps_dev = NULL;
+				spin_unlock_irqrestore(&pps_kc_hardpps_lock,
+						irq_flags);
+				pr_info("unbound kernel consumer\n");
+			} else {
+				spin_unlock_irqrestore(&pps_kc_hardpps_lock,
+						irq_flags);
+				pr_err("selected kernel consumer"
+						" is not bound\n");
+				return -EINVAL;
+			}
+		else
+			if (pps_kc_hardpps_dev == NULL ||
+					pps_kc_hardpps_dev == pps) {
+				pps_kc_hardpps_mode = bind_args.edge;
+				pps_kc_hardpps_dev = pps;
+				spin_unlock_irqrestore(&pps_kc_hardpps_lock,
+						irq_flags);
+				pr_info("bound kernel consumer: dev=%p, "
+					"edge=0x%x\n", pps, bind_args.edge);
+			} else {
+				spin_unlock_irqrestore(&pps_kc_hardpps_lock,
+						irq_flags);
+				pr_err("another kernel consumer"
+						" is already bound\n");
+				return -EINVAL;
+			}
+		break;
+
 	default:
 		return -ENOTTY;
-		break;
 	}
 
 	return 0;
