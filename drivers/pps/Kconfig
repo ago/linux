@@ -38,4 +38,6 @@ config NTP_PPS
 	  This option adds support for direct in-kernel time
 	  syncronization using an external PPS signal.
 
+source drivers/pps/clients/Kconfig
+
 endmenu
