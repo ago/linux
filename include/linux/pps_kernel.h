@@ -41,6 +41,7 @@ struct pps_source_info {
 };
 
 struct pps_event_time {
+	struct timespec ts_raw;
 	struct pps_ktime ts_real;
 };
 
@@ -104,7 +105,7 @@ static inline void pps_get_ts(struct pps_event_time *ts)
 {
 	struct timespec ts_real;
 
-	getnstimeofday(&ts_real);
+	getnstime_raw_and_real(&ts->ts_raw, &ts_real);
 	timespec_to_pps_ktime(&ts->ts_real, ts_real);
 }
 
