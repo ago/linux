@@ -79,20 +79,20 @@ struct pps_device *pps_register_source(struct pps_source_info *info,
 
 	/* Sanity checks */
 	if ((info->mode & default_params) != default_params) {
-		printk(KERN_ERR "pps: %s: unsupported default parameters\n",
+		pr_err("pps: %s: unsupported default parameters\n",
 					info->name);
 		err = -EINVAL;
 		goto pps_register_source_exit;
 	}
 	if ((info->mode & (PPS_ECHOASSERT | PPS_ECHOCLEAR)) != 0 &&
 			info->echo == NULL) {
-		printk(KERN_ERR "pps: %s: echo function is not defined\n",
+		pr_err("pps: %s: echo function is not defined\n",
 					info->name);
 		err = -EINVAL;
 		goto pps_register_source_exit;
 	}
 	if ((info->mode & (PPS_TSFMT_TSPEC | PPS_TSFMT_NTPFP)) == 0) {
-		printk(KERN_ERR "pps: %s: unspecified time format\n",
+		pr_err("pps: %s: unspecified time format\n",
 					info->name);
 		err = -EINVAL;
 		goto pps_register_source_exit;
@@ -137,7 +137,7 @@ struct pps_device *pps_register_source(struct pps_source_info *info,
 	if (id >= PPS_MAX_SOURCES) {
 		spin_unlock_irq(&pps_idr_lock);
 
-		printk(KERN_ERR "pps: %s: too many PPS sources in the system\n",
+		pr_err("pps: %s: too many PPS sources in the system\n",
 					info->name);
 		err = -EBUSY;
 		goto free_idr;
@@ -149,12 +149,12 @@ struct pps_device *pps_register_source(struct pps_source_info *info,
 	/* Create the char device */
 	err = pps_register_cdev(pps);
 	if (err < 0) {
-		printk(KERN_ERR "pps: %s: unable to create char device\n",
+		pr_err("pps: %s: unable to create char device\n",
 					info->name);
 		goto free_idr;
 	}
 
-	pr_info("new PPS source %s at ID %d\n", info->name, id);
+	dev_info(pps->dev, "new PPS source %s\n", info->name);
 
 	return pps;
 
@@ -167,7 +167,7 @@ kfree_pps:
 	kfree(pps);
 
 pps_register_source_exit:
-	printk(KERN_ERR "pps: %s: unable to register source\n", info->name);
+	pr_err("pps: %s: unable to register source\n", info->name);
 
 	return NULL;
 }
