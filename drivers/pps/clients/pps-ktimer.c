@@ -45,7 +45,7 @@ static void pps_ktimer_event(unsigned long ptr)
 	/* First of all we get the time stamp... */
 	pps_get_ts(&ts);
 
-	pr_info("PPS event at %lu\n", jiffies);
+	dev_info(pps->dev, "PPS event at %lu\n", jiffies);
 
 	pps_event(pps, &ts, PPS_CAPTUREASSERT, NULL);
 
@@ -94,7 +94,7 @@ static int __init pps_ktimer_init(void)
 	pps = pps_register_source(&pps_ktimer_info,
 				PPS_CAPTUREASSERT | PPS_OFFSETASSERT);
 	if (pps == NULL) {
-		printk(KERN_ERR "cannot register ktimer source\n");
+		pr_err("cannot register ktimer source\n");
 		return -ENOMEM;
 	}
 
