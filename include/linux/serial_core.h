@@ -192,6 +192,7 @@
 #include <linux/tty.h>
 #include <linux/mutex.h>
 #include <linux/sysrq.h>
+#include <linux/pps_kernel.h>
 
 struct uart_port;
 struct serial_struct;
@@ -492,10 +493,10 @@ uart_handle_dcd_change(struct uart_port *uport, unsigned int status)
 	struct uart_state *state = uport->state;
 	struct tty_port *port = &state->port;
 	struct tty_ldisc *ld = tty_ldisc_ref(port->tty);
-	struct timespec ts;
+	struct pps_event_time ts;
 
 	if (ld && ld->ops->dcd_change)
-		getnstimeofday(&ts);
+		pps_get_ts(&ts);
 
 	uport->icount.dcd++;
 #ifdef CONFIG_HARD_PPS
