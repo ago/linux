@@ -307,7 +307,7 @@ void getnstime_raw_and_real(struct timespec *ts_raw, struct timespec *ts_real)
 	WARN_ON(timekeeping_suspended);
 
 	do {
-		seq = read_seqbegin(&xtime_lock);
+		seq = read_raw_seqbegin(&xtime_lock);
 
 		*ts_raw = raw_time;
 		*ts_real = xtime;
@@ -318,7 +318,7 @@ void getnstime_raw_and_real(struct timespec *ts_raw, struct timespec *ts_real)
 		/* If arch requires, add in gettimeoffset() */
 		nsecs_real += arch_gettimeoffset();
 
-	} while (read_seqretry(&xtime_lock, seq));
+	} while (read_raw_seqretry(&xtime_lock, seq));
 
 	timespec_add_ns(ts_raw, nsecs_raw);
 	timespec_add_ns(ts_real, nsecs_real);
