@@ -248,7 +248,7 @@ static void perf_unpin_context(struct perf_event_context *ctx)
 
 static inline u64 perf_clock(void)
 {
-	return cpu_clock(smp_processor_id());
+	return cpu_clock(raw_smp_processor_id());
 }
 
 /*
@@ -1350,14 +1350,83 @@ static void perf_event_cpu_sched_in(struct perf_cpu_context *cpuctx, int cpu)
 
 static void perf_log_throttle(struct perf_event *event, int enable);
 
-static void perf_adjust_period(struct perf_event *event, u64 events)
+static u64 perf_calculate_period(struct perf_event *event, u64 nsec, u64 count)
+{
+	u64 frequency = event->attr.sample_freq;
+	u64 sec = NSEC_PER_SEC;
+	u64 divisor, dividend;
+
+	int count_fls, nsec_fls, frequency_fls, sec_fls;
+
+	count_fls = fls64(count);
+	nsec_fls = fls64(nsec);
+	frequency_fls = fls64(frequency);
+	sec_fls = 30;
+
+	/*
+	 * We got @count in @nsec, with a target of sample_freq HZ
+	 * the target period becomes:
+	 *
+	 *             @count * 10^9
+	 * period = -------------------
+	 *          @nsec * sample_freq
+	 *
+	 */
+
+	/*
+	 * Reduce accuracy by one bit such that @a and @b converge
+	 * to a similar magnitude.
+	 */
+#define REDUCE_FLS(a, b) 		\
+do {					\
+	if (a##_fls > b##_fls) {	\
+		a >>= 1;		\
+		a##_fls--;		\
+	} else {			\
+		b >>= 1;		\
+		b##_fls--;		\
+	}				\
+} while (0)
+
+	/*
+	 * Reduce accuracy until either term fits in a u64, then proceed with
+	 * the other, so that finally we can do a u64/u64 division.
+	 */
+	while (count_fls + sec_fls > 64 && nsec_fls + frequency_fls > 64) {
+		REDUCE_FLS(nsec, frequency);
+		REDUCE_FLS(sec, count);
+	}
+
+	if (count_fls + sec_fls > 64) {
+		divisor = nsec * frequency;
+
+		while (count_fls + sec_fls > 64) {
+			REDUCE_FLS(count, sec);
+			divisor >>= 1;
+		}
+
+		dividend = count * sec;
+	} else {
+		dividend = count * sec;
+
+		while (nsec_fls + frequency_fls > 64) {
+			REDUCE_FLS(nsec, frequency);
+			dividend >>= 1;
+		}
+
+		divisor = nsec * frequency;
+	}
+
+	return div64_u64(dividend, divisor);
+}
+
+static void perf_adjust_period(struct perf_event *event, u64 nsec, u64 count)
 {
 	struct hw_perf_event *hwc = &event->hw;
 	u64 period, sample_period;
 	s64 delta;
 
-	events *= hwc->sample_period;
-	period = div64_u64(events, event->attr.sample_freq);
+	period = perf_calculate_period(event, nsec, count);
 
 	delta = (s64)(period - hwc->sample_period);
 	delta = (delta + 7) / 8; /* low pass filter */
@@ -1368,13 +1437,22 @@ static void perf_adjust_period(struct perf_event *event, u64 events)
 		sample_period = 1;
 
 	hwc->sample_period = sample_period;
+
+	if (atomic64_read(&hwc->period_left) > 8*sample_period) {
+		perf_disable();
+		event->pmu->disable(event);
+		atomic64_set(&hwc->period_left, 0);
+		event->pmu->enable(event);
+		perf_enable();
+	}
 }
 
 static void perf_ctx_adjust_freq(struct perf_event_context *ctx)
 {
 	struct perf_event *event;
 	struct hw_perf_event *hwc;
-	u64 interrupts, freq;
+	u64 interrupts, now;
+	s64 delta;
 
 	raw_spin_lock(&ctx->lock);
 	list_for_each_entry_rcu(event, &ctx->event_list, event_entry) {
@@ -1395,44 +1473,18 @@ static void perf_ctx_adjust_freq(struct perf_event_context *ctx)
 		if (interrupts == MAX_INTERRUPTS) {
 			perf_log_throttle(event, 1);
 			event->pmu->unthrottle(event);
-			interrupts = 2*sysctl_perf_event_sample_rate/HZ;
 		}
 
 		if (!event->attr.freq || !event->attr.sample_freq)
 			continue;
 
-		/*
-		 * if the specified freq < HZ then we need to skip ticks
-		 */
-		if (event->attr.sample_freq < HZ) {
-			freq = event->attr.sample_freq;
+		event->pmu->read(event);
+		now = atomic64_read(&event->count);
+		delta = now - hwc->freq_count_stamp;
+		hwc->freq_count_stamp = now;
 
-			hwc->freq_count += freq;
-			hwc->freq_interrupts += interrupts;
-
-			if (hwc->freq_count < HZ)
-				continue;
-
-			interrupts = hwc->freq_interrupts;
-			hwc->freq_interrupts = 0;
-			hwc->freq_count -= HZ;
-		} else
-			freq = HZ;
-
-		perf_adjust_period(event, freq * interrupts);
-
-		/*
-		 * In order to avoid being stalled by an (accidental) huge
-		 * sample period, force reset the sample period if we didn't
-		 * get any events in this freq period.
-		 */
-		if (!interrupts) {
-			perf_disable();
-			event->pmu->disable(event);
-			atomic64_set(&hwc->period_left, 0);
-			event->pmu->enable(event);
-			perf_enable();
-		}
+		if (delta > 0)
+			perf_adjust_period(event, TICK_NSEC, delta);
 	}
 	raw_spin_unlock(&ctx->lock);
 }
@@ -3688,12 +3740,12 @@ static int __perf_event_overflow(struct perf_event *event, int nmi,
 
 	if (event->attr.freq) {
 		u64 now = perf_clock();
-		s64 delta = now - hwc->freq_stamp;
+		s64 delta = now - hwc->freq_time_stamp;
 
-		hwc->freq_stamp = now;
+		hwc->freq_time_stamp = now;
 
-		if (delta > 0 && delta < TICK_NSEC)
-			perf_adjust_period(event, NSEC_PER_SEC / (int)delta);
+		if (delta > 0 && delta < 2*TICK_NSEC)
+			perf_adjust_period(event, delta, hwc->last_period);
 	}
 
 	/*
@@ -3975,8 +4027,7 @@ void __perf_sw_event(u32 event_id, u64 nr, int nmi,
 	if (rctx < 0)
 		return;
 
-	data.addr = addr;
-	data.raw  = NULL;
+	perf_sample_data_init(&data, addr);
 
 	do_perf_sw_event(PERF_TYPE_SOFTWARE, event_id, nr, nmi, &data, regs);
 
@@ -4021,11 +4072,10 @@ static enum hrtimer_restart perf_swevent_hrtimer(struct hrtimer *hrtimer)
 	struct perf_event *event;
 	u64 period;
 
-	event	= container_of(hrtimer, struct perf_event, hw.hrtimer);
+	event = container_of(hrtimer, struct perf_event, hw.hrtimer);
 	event->pmu->read(event);
 
-	data.addr = 0;
-	data.raw = NULL;
+	perf_sample_data_init(&data, 0);
 	data.period = event->hw.last_period;
 	regs = get_irq_regs();
 	/*
@@ -4189,17 +4239,15 @@ static const struct pmu perf_ops_task_clock = {
 void perf_tp_event(int event_id, u64 addr, u64 count, void *record,
 			  int entry_size)
 {
+	struct pt_regs *regs = get_irq_regs();
+	struct perf_sample_data data;
 	struct perf_raw_record raw = {
 		.size = entry_size,
 		.data = record,
 	};
 
-	struct perf_sample_data data = {
-		.addr = addr,
-		.raw = &raw,
-	};
-
-	struct pt_regs *regs = get_irq_regs();
+	perf_sample_data_init(&data, addr);
+	data.raw = &raw;
 
 	if (!regs)
 		regs = task_pt_regs(current);
@@ -4315,8 +4363,7 @@ void perf_bp_event(struct perf_event *bp, void *data)
 	struct perf_sample_data sample;
 	struct pt_regs *regs = data;
 
-	sample.raw = NULL;
-	sample.addr = bp->attr.bp_addr;
+	perf_sample_data_init(&sample, bp->attr.bp_addr);
 
 	if (!perf_exclude_event(bp, regs))
 		perf_swevent_add(bp, 1, 1, &sample, regs);
@@ -5199,12 +5246,22 @@ int perf_event_init_task(struct task_struct *child)
 	return ret;
 }
 
+static void __init perf_event_init_all_cpus(void)
+{
+	int cpu;
+	struct perf_cpu_context *cpuctx;
+
+	for_each_possible_cpu(cpu) {
+		cpuctx = &per_cpu(perf_cpu_context, cpu);
+		__perf_event_init_context(&cpuctx->ctx, NULL);
+	}
+}
+
 static void __cpuinit perf_event_init_cpu(int cpu)
 {
 	struct perf_cpu_context *cpuctx;
 
 	cpuctx = &per_cpu(perf_cpu_context, cpu);
-	__perf_event_init_context(&cpuctx->ctx, NULL);
 
 	spin_lock(&perf_resource_lock);
 	cpuctx->max_pertask = perf_max_events - perf_reserved_percpu;
@@ -5275,6 +5332,7 @@ static struct notifier_block __cpuinitdata perf_cpu_nb = {
 
 void __init perf_event_init(void)
 {
+	perf_event_init_all_cpus();
 	perf_cpu_notify(&perf_cpu_nb, (unsigned long)CPU_UP_PREPARE,
 			(void *)(long)smp_processor_id());
 	perf_cpu_notify(&perf_cpu_nb, (unsigned long)CPU_ONLINE,
