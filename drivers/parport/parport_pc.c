@@ -105,6 +105,7 @@ static int user_specified;
        (defined(CONFIG_PARPORT_1284) && defined(CONFIG_PARPORT_PC_FIFO))
 static int verbose_probing;
 #endif
+static int fast_irq = 0;
 static int pci_registered_parport;
 static int pnp_registered_parport;
 
@@ -2434,7 +2435,8 @@ struct parport *parport_pc_probe_port(unsigned long int base,
 	}
 	if (p->irq != PARPORT_IRQ_NONE) {
 		if (request_irq(p->irq, parport_irq_handler,
-				 irqflags, p->name, p)) {
+				 irqflags | (fast_irq ? IRQF_NODELAY : 0),
+				 p->name, p)) {
 			printk(KERN_WARNING "%s: irq %d in use, "
 				"resorting to polled operation\n",
 				p->name, p->irq);
@@ -3473,6 +3475,9 @@ MODULE_PARM_DESC(init_mode,
 	"Initialise mode for VIA VT8231 port (spp, ps2, epp, ecp or ecpepp)");
 module_param(init_mode, charp, 0);
 #endif
+MODULE_PARM_DESC(fast_irq,
+	"Use fast interrupt handler for minimum latency");
+module_param(fast_irq, int, 0);
 
 static int __init parse_parport_params(void)
 {
