@@ -80,25 +80,14 @@ struct pps_device *pps_register_source(struct pps_source_info *info,
 	int err;
 
 	/* Sanity checks */
-	if ((info->mode & default_params) != default_params) {
-		pr_err("pps: %s: unsupported default parameters\n",
-					info->name);
-		err = -EINVAL;
-		goto pps_register_source_exit;
-	}
-	if ((info->mode & (PPS_ECHOASSERT | PPS_ECHOCLEAR)) != 0 &&
-			info->echo == NULL) {
-		pr_err("pps: %s: echo function is not defined\n",
-					info->name);
-		err = -EINVAL;
-		goto pps_register_source_exit;
-	}
-	if ((info->mode & (PPS_TSFMT_TSPEC | PPS_TSFMT_NTPFP)) == 0) {
-		pr_err("pps: %s: unspecified time format\n",
-					info->name);
-		err = -EINVAL;
-		goto pps_register_source_exit;
-	}
+
+	/* default_params should be supported */
+	BUG_ON((info->mode & default_params) != default_params);
+	/* echo function should be defined if we are asked to call it */
+	BUG_ON((info->mode & (PPS_ECHOASSERT | PPS_ECHOCLEAR)) != 0 &&
+			info->echo == NULL);
+	/* time format should be specified */
+	BUG_ON((info->mode & (PPS_TSFMT_TSPEC | PPS_TSFMT_NTPFP)) == 0);
 
 	/* Allocate memory for the new PPS source struct */
 	pps = kzalloc(sizeof(struct pps_device), GFP_KERNEL);
@@ -178,10 +167,8 @@ void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 	int captured = 0;
 	struct pps_ktime ts_real;
 
-	if ((event & (PPS_CAPTUREASSERT | PPS_CAPTURECLEAR)) == 0) {
-		dev_err(pps->dev, "unknown event (%x)\n", event);
-		return;
-	}
+	/* check event type */
+	BUG_ON((event & (PPS_CAPTUREASSERT | PPS_CAPTURECLEAR)) == 0);
 
 	dev_dbg(pps->dev, "PPS event at %ld.%09ld\n",
 			ts->ts_real.tv_sec, ts->ts_real.tv_nsec);
