@@ -192,7 +192,6 @@ EXPORT_SYMBOL(pps_unregister_source);
 void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 		void *data)
 {
-	unsigned long flags;
 	int captured = 0;
 	struct pps_ktime ts_real;
 
@@ -204,7 +203,7 @@ void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 
 	timespec_to_pps_ktime(&ts_real, ts->ts_real);
 
-	spin_lock_irqsave(&pps->lock, flags);
+	spin_lock(&pps->lock);
 
 	/* Must call the echo function? */
 	if ((pps->params.mode & (PPS_ECHOASSERT | PPS_ECHOCLEAR)))
@@ -255,7 +254,7 @@ void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 		kill_fasync(&pps->async_queue, SIGIO, POLL_IN);
 	}
 
-	spin_unlock_irqrestore(&pps->lock, flags);
+	spin_unlock(&pps->lock);
 }
 EXPORT_SYMBOL(pps_event);
 
