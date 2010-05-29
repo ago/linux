@@ -26,6 +26,7 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/time.h>
+#include <linux/workqueue.h>
 
 /*
  * Global defines
@@ -71,6 +72,13 @@ struct pps_device {
 	struct device *dev;
 	struct fasync_struct *async_queue;	/* fasync method */
 	spinlock_t lock;
+
+	struct work_struct assert_work;
+	struct work_struct clear_work;
+	struct pps_event_time assert_work_ts;
+	struct pps_event_time clear_work_ts;
+	void *assert_work_data;
+	void *clear_work_data;
 };
 
 /*
@@ -85,6 +93,8 @@ extern spinlock_t pps_kc_hardpps_lock;
 extern void *pps_kc_hardpps_dev;	/* some unique pointer to device */
 extern int pps_kc_hardpps_mode;		/* mode bits for kernel consumer */
 
+extern struct workqueue_struct *pps_event_workqueue;
+
 /*
  * Exported functions
  */
@@ -95,6 +105,8 @@ extern void pps_unregister_source(struct pps_device *pps);
 extern int pps_register_cdev(struct pps_device *pps);
 extern void pps_unregister_cdev(struct pps_device *pps);
 extern void pps_event(struct pps_device *pps,
+		struct pps_event_time *ts, int event, void *data);
+extern void pps_event_irq(struct pps_device *pps,
 		struct pps_event_time *ts, int event, void *data);
 
 static inline void timespec_to_pps_ktime(struct pps_ktime *kt,
