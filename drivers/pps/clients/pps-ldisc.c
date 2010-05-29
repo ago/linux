@@ -40,7 +40,7 @@ static void pps_tty_dcd_change(struct tty_struct *tty, unsigned int status,
 		ts = &__ts;
 
 	/* Now do the PPS event report */
-	pps_event(pps, ts, status ? PPS_CAPTUREASSERT : PPS_CAPTURECLEAR,
+	pps_event_irq(pps, ts, status ? PPS_CAPTUREASSERT : PPS_CAPTURECLEAR,
 			NULL);
 
 	dev_dbg(pps->dev, "PPS %s at %lu\n", status ? "assert" : "clear",
