@@ -321,18 +321,26 @@ void pps_unregister_cdev(struct pps_device *pps)
 
 static void __exit pps_exit(void)
 {
-	class_destroy(pps_class);
 	unregister_chrdev_region(pps_devt, PPS_MAX_SOURCES);
+	class_destroy(pps_class);
+	destroy_workqueue(pps_event_workqueue);
 }
 
 static int __init pps_init(void)
 {
 	int err;
 
+	pps_event_workqueue = create_workqueue("pps");
+	if (!pps_event_workqueue) {
+		pr_err("failed to create workqueue\n");
+		return -ENOMEM;
+	}
+
 	pps_class = class_create(THIS_MODULE, "pps");
 	if (!pps_class) {
 		pr_err("failed to allocate class\n");
-		return -ENOMEM;
+		err = -ENOMEM;
+		goto destroy_workqueue;
 	}
 	pps_class->dev_attrs = pps_attrs;
 
@@ -350,6 +358,8 @@ static int __init pps_init(void)
 
 remove_class:
 	class_destroy(pps_class);
+destroy_workqueue:
+	destroy_workqueue(pps_event_workqueue);
 
 	return err;
 }

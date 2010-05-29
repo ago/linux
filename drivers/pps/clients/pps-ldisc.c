@@ -50,7 +50,7 @@ static void pps_tty_dcd_change(struct tty_struct *tty, unsigned int status,
 	/* Now do the PPS event report */
 	pps = (struct pps_device *)tty->disc_data;
 	if (pps != NULL) {
-		pps_event(pps, ts, status ? PPS_CAPTUREASSERT :
+		pps_event_irq(pps, ts, status ? PPS_CAPTUREASSERT :
 				PPS_CAPTURECLEAR, NULL);
 		spin_unlock_irqrestore(&pps_ldisc_lock, flags);
 		dev_dbg(pps->dev, "PPS %s at %lu\n",

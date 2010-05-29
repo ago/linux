@@ -32,8 +32,18 @@
 #include <linux/slab.h>
 
 /*
+ * Global variables
+ */
+
+/* PPS event workqueue */
+struct workqueue_struct *pps_event_workqueue;
+
+/*
  * Local functions
  */
+
+static void assert_work_func(struct work_struct *work);
+static void clear_work_func(struct work_struct *work);
 
 static void pps_add_offset(struct pps_ktime *ts, struct pps_ktime *offset)
 {
@@ -108,6 +118,9 @@ struct pps_device *pps_register_source(struct pps_source_info *info,
 	init_waitqueue_head(&pps->queue);
 	spin_lock_init(&pps->lock);
 
+	INIT_WORK(&pps->assert_work, assert_work_func);
+	INIT_WORK(&pps->clear_work, clear_work_func);
+
 	/* Create the char device */
 	err = pps_register_cdev(pps);
 	if (err < 0) {
@@ -152,11 +165,12 @@ EXPORT_SYMBOL(pps_unregister_source);
  * @event: the event type
  * @data: userdef pointer
  *
- * This function is used by each PPS client in order to register a new
- * PPS event into the system (it's usually called inside an IRQ handler).
+ * This function is used by PPS clients in order to register a new
+ * PPS event into the system. It should not be called from an IRQ
+ * handler. Use pps_event_irq instead.
  *
- * If an echo function is associated with the PPS device it will be called
- * as:
+ * If an echo function is associated with the PPS device it will be
+ * called as:
  *	pps->info.echo(pps, event, data);
  */
 void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
@@ -226,3 +240,76 @@ void pps_event(struct pps_device *pps, struct pps_event_time *ts, int event,
 	spin_unlock_irqrestore(&pps->lock, flags);
 }
 EXPORT_SYMBOL(pps_event);
+
+/* Async event handlers */
+
+static void assert_work_func(struct work_struct *work)
+{
+	struct pps_device *pps = container_of(work,
+			struct pps_device, assert_work);
+
+	pps_event(pps, &pps->assert_work_ts, PPS_CAPTUREASSERT,
+			pps->assert_work_data);
+}
+
+static void clear_work_func(struct work_struct *work)
+{
+	struct pps_device *pps = container_of(work,
+			struct pps_device, clear_work);
+
+	pps_event(pps, &pps->clear_work_ts, PPS_CAPTURECLEAR,
+			pps->clear_work_data);
+}
+
+/* pps_event_irq - register a PPS event for deffered handling using
+ * workqueue
+ *
+ * @pps: the PPS device
+ * @ts: the event timestamp
+ * @event: the event type
+ * @data: userdef pointer
+ *
+ * This function is used by PPS clients in order to register a new
+ * PPS event into the system. It should be called from an IRQ handler
+ * only.
+ *
+ * If an echo function is associated with the PPS device it will be
+ * called as:
+ *	pps->info.echo(pps, event, data);
+ */
+void pps_event_irq(struct pps_device *pps, struct pps_event_time *ts,
+		int event, void *data)
+{
+	/* check event type */
+	BUG_ON((event & (PPS_CAPTUREASSERT | PPS_CAPTURECLEAR)) == 0);
+
+	if (event & PPS_CAPTUREASSERT) {
+		if (work_pending(&pps->assert_work)) {
+			dev_err(pps->dev, "deferred assert edge work haven't"
+					" been handled within a second\n");
+			/* FIXME: do something more intelligent
+			 * then just exit */
+		} else {
+			/* now we can copy data safely */
+			pps->assert_work_ts = *ts;
+			pps->assert_work_data = data;
+
+			queue_work(pps_event_workqueue, &pps->assert_work);
+		}
+	}
+	if (event & PPS_CAPTURECLEAR) {
+		if (work_pending(&pps->clear_work)) {
+			dev_err(pps->dev, "deferred clear edge work haven't"
+					" been handled within a second\n");
+			/* FIXME: do something more intelligent
+			 * then just exit */
+		} else {
+			/* now we can copy data safely */
+			pps->clear_work_ts = *ts;
+			pps->clear_work_data = data;
+
+			queue_work(pps_event_workqueue, &pps->clear_work);
+		}
+	}
+}
+EXPORT_SYMBOL(pps_event_irq);

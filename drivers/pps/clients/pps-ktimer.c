@@ -48,7 +48,7 @@ static void pps_ktimer_event(unsigned long ptr)
 
 	dev_info(pps->dev, "PPS event at %lu\n", jiffies);
 
-	pps_event(pps, &ts, PPS_CAPTUREASSERT, NULL);
+	pps_event_irq(pps, &ts, PPS_CAPTUREASSERT, NULL);
 
 	mod_timer(&ktimer, jiffies + HZ);
 }
