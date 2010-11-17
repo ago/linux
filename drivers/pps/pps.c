@@ -369,7 +369,7 @@ static int __init pps_init(void)
 {
 	int err;
 
-	pps_event_workqueue = create_workqueue("pps");
+	pps_event_workqueue = create_rt_workqueue("pps");
 	if (!pps_event_workqueue) {
 		pr_err("failed to create workqueue\n");
 		return -ENOMEM;
