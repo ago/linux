@@ -522,11 +522,18 @@ static void tty_ldisc_restore(struct tty_struct *tty, struct tty_ldisc *old)
  *	You need to do a 'flush_scheduled_work()' (outside the ldisc_mutex)
  *	in order to make sure any currently executing ldisc work is also
  *	flushed.
+ *
+ *	dcd_change() doesn't use workqueues so it needs a special
+ *	"barrier", which ensures that there are no active ldisc references
+ *	in dcd_change().
  */
 
 static int tty_ldisc_halt(struct tty_struct *tty)
 {
+	spin_lock_irq(&tty->dcd_change_lock);
 	clear_bit(TTY_LDISC, &tty->flags);
+	spin_unlock_irq(&tty->dcd_change_lock);
+
 	return cancel_delayed_work_sync(&tty->buf.work);
 }
 

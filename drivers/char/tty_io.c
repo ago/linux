@@ -2816,6 +2816,7 @@ void initialize_tty_struct(struct tty_struct *tty,
 	mutex_init(&tty->echo_lock);
 	spin_lock_init(&tty->read_lock);
 	spin_lock_init(&tty->ctrl_lock);
+	spin_lock_init(&tty->dcd_change_lock);
 	INIT_LIST_HEAD(&tty->tty_files);
 	INIT_WORK(&tty->SAK_work, do_SAK_work);
 
