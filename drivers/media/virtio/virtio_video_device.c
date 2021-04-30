@@ -730,6 +730,8 @@ void virtio_video_buf_done(struct virtio_video_buffer *virtio_vb,
 	struct virtio_video_device *vvd = to_virtio_vd(stream->video_dev);
 	struct video_format_info *p_info;
 
+	mutex_lock(&stream->event_mutex);
+
 	virtio_vb->queued = false;
 
 	if (flags & VIRTIO_VIDEO_BUFFER_FLAG_ERR)
@@ -765,8 +767,7 @@ void virtio_video_buf_done(struct virtio_video_buffer *virtio_vb,
 	if ((flags & VIRTIO_VIDEO_BUFFER_FLAG_ERR) ||
 	    (flags & VIRTIO_VIDEO_BUFFER_FLAG_EOS)) {
 		vb->planes[0].bytesused = 0;
-		v4l2_m2m_buf_done(v4l2_vb, done_state);
-		return;
+		goto buf_done;
 	}
 
 	if (!V4L2_TYPE_IS_OUTPUT(vb2_queue->type)) {
@@ -785,7 +786,9 @@ void virtio_video_buf_done(struct virtio_video_buffer *virtio_vb,
 		vb->timestamp = timestamp;
 	}
 
+buf_done:
 	v4l2_m2m_buf_done(v4l2_vb, done_state);
+	mutex_unlock(&stream->event_mutex);
 }
 
 static void virtio_video_worker(struct work_struct *work)
