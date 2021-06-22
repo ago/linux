@@ -197,7 +197,7 @@ static int virtio_video_buf_init_guest_pages(struct vb2_buffer *vb)
 	v4l2_dbg(1, vv->debug, &vv->v4l2_dev, "mem entries:\n");
 	if (vv->debug >= 1) {
 		for (i = 0; i < nents; i++)
-			pr_debug("\t%03i: addr=%llx length=%u\n", i,
+			v4l2_printk(KERN_DEBUG, &vv->v4l2_dev, "\t%03i: addr=%llx length=%u\n", i,
 					ents[i].addr, ents[i].length);
 	}
 
