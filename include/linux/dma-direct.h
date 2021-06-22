@@ -29,6 +29,9 @@ static inline dma_addr_t translate_phys_to_dma(struct device *dev,
 {
 	const struct bus_dma_region *m;
 
+	if (!dev->dma_range_map)
+		return (dma_addr_t)paddr;
+
 	for (m = dev->dma_range_map; m->size; m++)
 		if (paddr >= m->cpu_start && paddr - m->cpu_start < m->size)
 			return (dma_addr_t)paddr - m->offset;
@@ -41,6 +44,9 @@ static inline phys_addr_t translate_dma_to_phys(struct device *dev,
 		dma_addr_t dma_addr)
 {
 	const struct bus_dma_region *m;
+
+	if (!dev->dma_range_map)
+		return (phys_addr_t)dma_addr;
 
 	for (m = dev->dma_range_map; m->size; m++)
 		if (dma_addr >= m->dma_start && dma_addr - m->dma_start < m->size)
