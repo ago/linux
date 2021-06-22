@@ -125,6 +125,11 @@ static int virtio_video_probe(struct virtio_device *vdev)
 	if (!vv)
 		return -ENOMEM;
 
+	dev->dma_mask = &vv->dma_mask;
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	if (ret)
+		return ret;
+
 	vv->vdev = vdev;
 	vv->debug = debug;
 	vv->use_dma_mem = use_dma_mem;

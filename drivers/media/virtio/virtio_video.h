@@ -131,6 +131,7 @@ struct virtio_video_queue {
 struct virtio_video {
 	struct v4l2_device v4l2_dev;
 	int instance;
+	u64 dma_mask;
 
 	struct virtio_device *vdev;
 	struct virtio_video_queue commandq;
