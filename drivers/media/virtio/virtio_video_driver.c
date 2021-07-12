@@ -187,6 +187,10 @@ static int virtio_video_probe(struct virtio_device *vdev)
 		goto err_config;
 	}
 
+	virtio_cread_bytes(vdev,
+			   offsetof(struct virtio_video_config, device_name),
+			   vv->device_name, sizeof(vv->device_name));
+
 	ret = virtio_video_alloc_events(vv, vv->eventq.vq->num_free);
 	if (ret)
 		goto err_events;
