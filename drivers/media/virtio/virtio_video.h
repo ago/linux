@@ -148,6 +148,7 @@ struct virtio_video {
 
 	uint32_t max_caps_len;
 	uint32_t max_resp_len;
+	u8 device_name[32];
 	bool got_caps;
 	bool got_control;
 

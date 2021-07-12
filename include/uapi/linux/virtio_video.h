@@ -153,6 +153,7 @@ struct virtio_video_config {
 	__le32 version;
 	__le32 max_caps_length;
 	__le32 max_resp_length;
+	__u8 device_name[32];
 };
 
 /*

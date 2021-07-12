@@ -328,9 +328,10 @@ int virtio_video_querycap(struct file *file, void *fh,
 			  struct v4l2_capability *cap)
 {
 	struct video_device *video_dev = video_devdata(file);
+	struct virtio_video *vv = to_virtio_vd(video_dev)->vv;
 
 	strncpy(cap->driver, DRIVER_NAME, sizeof(cap->driver));
-	strncpy(cap->card, video_dev->name, sizeof(cap->card));
+	snprintf(cap->card, sizeof(cap->card), "%s", vv->device_name);
 	snprintf(cap->bus_info, sizeof(cap->bus_info), "virtio:%s",
 		 video_dev->name);
 
