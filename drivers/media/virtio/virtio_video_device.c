@@ -154,7 +154,7 @@ static int virtio_video_buf_init_guest_pages(struct vb2_buffer *vb)
 
 		for (i = 0; i < vb->num_planes; ++i) {
 			for_each_sg(sgt[i]->sgl, sg, sgt[i]->nents, j) {
-				ents[j].addr = cpu_to_le64(vv->has_iommu
+				ents[j].addr = cpu_to_le64(vv->use_dma_api
 							   ? sg_dma_address(sg)
 							   : sg_phys(sg));
 				ents[j].length = cpu_to_le32(sg->length);

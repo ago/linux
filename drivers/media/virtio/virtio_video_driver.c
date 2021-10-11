@@ -19,6 +19,8 @@
 
 #include <linux/module.h>
 #include <linux/version.h>
+#include <linux/dma-direct.h>
+#include <linux/dma-map-ops.h>
 #include <linux/dma-mapping.h>
 
 #include "virtio_video.h"
@@ -207,8 +209,8 @@ static int virtio_video_probe(struct virtio_device *vdev)
 	if (virtio_has_feature(vdev, VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG))
 		vv->supp_non_contig = true;
 
-	vv->has_iommu = !virtio_has_iommu_quirk(vdev);
-	if (!vv->has_iommu)
+	vv->use_dma_api = !virtio_has_dma_quirk(vdev);
+	if (!vv->use_dma_api)
 		set_dma_ops(dev, &dma_phys_ops);
 	dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(64));
 
