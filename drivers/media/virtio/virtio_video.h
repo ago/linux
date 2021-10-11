@@ -155,7 +155,7 @@ struct virtio_video {
 	bool got_caps;
 	bool got_control;
 
-	bool has_iommu;
+	bool use_dma_api;
 	bool supp_non_contig;
 	struct list_head devices_list;
 
