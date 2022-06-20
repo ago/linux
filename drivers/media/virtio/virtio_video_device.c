@@ -692,11 +692,20 @@ int virtio_video_try_fmt(struct virtio_video_stream *stream,
 
 	frame = virtio_video_find_format(stream, f->type, info->fourcc_format,
 					 info->frame_width, info->frame_height);
-	if (frame != NULL)
-		return PTR_ERR_OR_ZERO(frame);
+	if (IS_ERR(frame))
+		return PTR_ERR(frame);
 
 	/* Given format is not supported, returning current */
-	virtio_video_format_from_info(info, pix_mp);
+	if (frame == NULL)
+		virtio_video_format_from_info(info, pix_mp);
+
+	/* If the format is a coded format, set a single plane. */
+	if (!v4l2_format_info(pix_mp->pixelformat)) {
+		pix_mp->num_planes = 1;
+		if (pix_mp->plane_fmt[0].sizeimage < 1024 * 1024)
+			pix_mp->plane_fmt[0].sizeimage = 1024 * 1024;
+	}
+
 	return 0;
 }
 
