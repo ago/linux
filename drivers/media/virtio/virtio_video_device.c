@@ -675,6 +675,7 @@ int virtio_video_try_fmt(struct virtio_video_stream *stream,
 {
 	struct video_format_frame *frame;
 	struct video_format_info *info;
+        struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 
 	switch (f->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
@@ -687,13 +688,15 @@ int virtio_video_try_fmt(struct virtio_video_stream *stream,
 		return -EINVAL;
 	}
 
+	pix_mp->field = V4L2_FIELD_NONE;
+
 	frame = virtio_video_find_format(stream, f->type, info->fourcc_format,
 					 info->frame_width, info->frame_height);
 	if (frame != NULL)
 		return PTR_ERR_OR_ZERO(frame);
 
 	/* Given format is not supported, returning current */
-	virtio_video_format_from_info(info, &f->fmt.pix_mp);
+	virtio_video_format_from_info(info, pix_mp);
 	return 0;
 }
 
