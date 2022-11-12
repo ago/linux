@@ -775,6 +775,11 @@ int virtio_video_reqbufs(struct file *file, void *priv,
 		ret = virtio_video_cmd_set_params(vv, stream, params, queue_type);
 		if (ret)
 			return ret;
+
+		if (rb->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
+		    rb->count < stream->out_info.min_buffers) {
+			rb->count = stream->out_info.min_buffers;
+		}
 	}
 
 	return v4l2_m2m_reqbufs(file, m2m_ctx, rb);
